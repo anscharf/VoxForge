@@ -11,6 +11,8 @@ interface OpenAIStatus {
   status: "ready" | "no_api_key" | "invalid_api_key" | "error";
 }
 
+type MittwaldStatus = OpenAIStatus;
+
 export function SettingsPanel() {
   const { settings, setSettings, showSettings, setShowSettings } = useAppStore();
   const { saveSettings } = useSettings();
@@ -18,6 +20,8 @@ export function SettingsPanel() {
   const [localSettings, setLocalSettings] = useState<AppSettings | null>(null);
   const [openaiStatus, setOpenaiStatus] = useState<OpenAIStatus | null>(null);
   const [isCheckingKey, setIsCheckingKey] = useState(false);
+  const [mittwaldStatus, setMittwaldStatus] = useState<MittwaldStatus | null>(null);
+  const [isCheckingMittwald, setIsCheckingMittwald] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   // Initialize local settings from store
@@ -31,6 +35,10 @@ export function SettingsPanel() {
         openaiApiKey: settings.openaiApiKey || "",
         openaiModel: settings.openaiModel || "gpt-4o-mini",
         openaiTranscriptionModel: settings.openaiTranscriptionModel || "whisper-1",
+        mittwaldApiKey: settings.mittwaldApiKey || "",
+        mittwaldBaseUrl: settings.mittwaldBaseUrl || "https://llm.aihosting.mittwald.de/v1",
+        mittwaldModel: settings.mittwaldModel || "Mistral-Small-3.2-24B-Instruct",
+        mittwaldTranscriptionModel: settings.mittwaldTranscriptionModel || "whisper-large-v3-turbo",
       });
     }
   }, [settings]);
@@ -53,6 +61,27 @@ export function SettingsPanel() {
       setOpenaiStatus({ status: "error" });
     } finally {
       setIsCheckingKey(false);
+    }
+  }, []);
+
+  // Check Mittwald API key
+  const checkMittwaldKey = useCallback(async (apiKey: string) => {
+    if (!apiKey.trim()) {
+      setMittwaldStatus({ status: "no_api_key" });
+      return;
+    }
+
+    setIsCheckingMittwald(true);
+    try {
+      const status = await invoke<MittwaldStatus>("check_mittwald_api_key", {
+        apiKey,
+      });
+      setMittwaldStatus(status);
+    } catch (error) {
+      console.error("Failed to check Mittwald API key:", error);
+      setMittwaldStatus({ status: "error" });
+    } finally {
+      setIsCheckingMittwald(false);
     }
   }, []);
 
@@ -127,10 +156,10 @@ export function SettingsPanel() {
             <h3 className="text-lg font-medium text-gray-800 mb-4">
               KI-Anbieter für Textanreicherung
             </h3>
-            <div className="flex gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <button
                 onClick={() => updateSetting("aiProvider", "ollama")}
-                className={`flex-1 p-4 rounded-xl border-2 transition-all ${
+                className={`p-4 rounded-xl border-2 transition-all ${
                   localSettings.aiProvider === "ollama"
                     ? "border-blue-500 bg-blue-50"
                     : "border-gray-200 hover:border-gray-300"
@@ -138,7 +167,7 @@ export function SettingsPanel() {
               >
                 <div className="flex items-center gap-3">
                   <div
-                    className={`w-4 h-4 rounded-full border-2 ${
+                    className={`w-4 h-4 rounded-full border-2 shrink-0 ${
                       localSettings.aiProvider === "ollama"
                         ? "border-blue-500 bg-blue-500"
                         : "border-gray-300"
@@ -160,8 +189,39 @@ export function SettingsPanel() {
               </button>
 
               <button
+                onClick={() => updateSetting("aiProvider", "mittwald")}
+                className={`p-4 rounded-xl border-2 transition-all ${
+                  localSettings.aiProvider === "mittwald"
+                    ? "border-blue-500 bg-blue-50"
+                    : "border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`w-4 h-4 rounded-full border-2 shrink-0 ${
+                      localSettings.aiProvider === "mittwald"
+                        ? "border-blue-500 bg-blue-500"
+                        : "border-gray-300"
+                    }`}
+                  >
+                    {localSettings.aiProvider === "mittwald" && (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-left">
+                    <p className="font-medium text-gray-800">Mittwald (DSGVO)</p>
+                    <p className="text-sm text-gray-500">
+                      Deutsches Rechenzentrum, API-Key
+                    </p>
+                  </div>
+                </div>
+              </button>
+
+              <button
                 onClick={() => updateSetting("aiProvider", "openai")}
-                className={`flex-1 p-4 rounded-xl border-2 transition-all ${
+                className={`p-4 rounded-xl border-2 transition-all ${
                   localSettings.aiProvider === "openai"
                     ? "border-blue-500 bg-blue-50"
                     : "border-gray-200 hover:border-gray-300"
@@ -169,7 +229,7 @@ export function SettingsPanel() {
               >
                 <div className="flex items-center gap-3">
                   <div
-                    className={`w-4 h-4 rounded-full border-2 ${
+                    className={`w-4 h-4 rounded-full border-2 shrink-0 ${
                       localSettings.aiProvider === "openai"
                         ? "border-blue-500 bg-blue-500"
                         : "border-gray-300"
@@ -197,10 +257,10 @@ export function SettingsPanel() {
             <h3 className="text-lg font-medium text-gray-800 mb-4">
               Transkriptions-Anbieter
             </h3>
-            <div className="flex gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <button
                 onClick={() => updateSetting("transcriptionProvider", "whisper")}
-                className={`flex-1 p-4 rounded-xl border-2 transition-all ${
+                className={`p-4 rounded-xl border-2 transition-all ${
                   localSettings.transcriptionProvider === "whisper"
                     ? "border-blue-500 bg-blue-50"
                     : "border-gray-200 hover:border-gray-300"
@@ -208,7 +268,7 @@ export function SettingsPanel() {
               >
                 <div className="flex items-center gap-3">
                   <div
-                    className={`w-4 h-4 rounded-full border-2 ${
+                    className={`w-4 h-4 rounded-full border-2 shrink-0 ${
                       localSettings.transcriptionProvider === "whisper"
                         ? "border-blue-500 bg-blue-500"
                         : "border-gray-300"
@@ -230,8 +290,39 @@ export function SettingsPanel() {
               </button>
 
               <button
+                onClick={() => updateSetting("transcriptionProvider", "mittwald")}
+                className={`p-4 rounded-xl border-2 transition-all ${
+                  localSettings.transcriptionProvider === "mittwald"
+                    ? "border-blue-500 bg-blue-50"
+                    : "border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`w-4 h-4 rounded-full border-2 shrink-0 ${
+                      localSettings.transcriptionProvider === "mittwald"
+                        ? "border-blue-500 bg-blue-500"
+                        : "border-gray-300"
+                    }`}
+                  >
+                    {localSettings.transcriptionProvider === "mittwald" && (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-left">
+                    <p className="font-medium text-gray-800">Mittwald Whisper</p>
+                    <p className="text-sm text-gray-500">
+                      Whisper-Large-V3-Turbo, DSGVO
+                    </p>
+                  </div>
+                </div>
+              </button>
+
+              <button
                 onClick={() => updateSetting("transcriptionProvider", "openai")}
-                className={`flex-1 p-4 rounded-xl border-2 transition-all ${
+                className={`p-4 rounded-xl border-2 transition-all ${
                   localSettings.transcriptionProvider === "openai"
                     ? "border-blue-500 bg-blue-50"
                     : "border-gray-200 hover:border-gray-300"
@@ -239,7 +330,7 @@ export function SettingsPanel() {
               >
                 <div className="flex items-center gap-3">
                   <div
-                    className={`w-4 h-4 rounded-full border-2 ${
+                    className={`w-4 h-4 rounded-full border-2 shrink-0 ${
                       localSettings.transcriptionProvider === "openai"
                         ? "border-blue-500 bg-blue-500"
                         : "border-gray-300"
@@ -261,6 +352,145 @@ export function SettingsPanel() {
               </button>
             </div>
           </section>
+
+          {/* Mittwald Settings (shown when Mittwald is selected for LLM or STT) */}
+          {(localSettings.aiProvider === "mittwald" ||
+            localSettings.transcriptionProvider === "mittwald") && (
+            <section className="p-4 bg-emerald-50/40 border border-emerald-100 rounded-xl">
+              <h3 className="text-lg font-medium text-gray-800 mb-4">
+                Mittwald AI Hosting
+              </h3>
+
+              {/* API Key */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  API-Schlüssel
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    value={localSettings.mittwaldApiKey}
+                    onChange={(e) =>
+                      updateSetting("mittwaldApiKey", e.target.value)
+                    }
+                    placeholder="mst_..."
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <button
+                    onClick={() => checkMittwaldKey(localSettings.mittwaldApiKey)}
+                    disabled={isCheckingMittwald}
+                    className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+                  >
+                    {isCheckingMittwald ? "Prüfen..." : "Prüfen"}
+                  </button>
+                </div>
+                {mittwaldStatus && (
+                  <div
+                    className={`mt-2 text-sm ${
+                      mittwaldStatus.status === "ready"
+                        ? "text-emerald-700"
+                        : "text-red-600"
+                    }`}
+                  >
+                    {mittwaldStatus.status === "ready" && "✓ API-Schlüssel gültig"}
+                    {mittwaldStatus.status === "no_api_key" &&
+                      "Bitte API-Schlüssel eingeben"}
+                    {mittwaldStatus.status === "invalid_api_key" &&
+                      "✗ API-Schlüssel ungültig"}
+                    {mittwaldStatus.status === "error" &&
+                      "✗ Fehler bei der Prüfung"}
+                  </div>
+                )}
+                <p className="mt-2 text-xs text-gray-500">
+                  API-Key generierst du im mStudio unter{" "}
+                  <a
+                    href="https://studio.mittwald.de"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-emerald-700 hover:underline"
+                  >
+                    studio.mittwald.de
+                  </a>
+                  . Hosting in Espelkamp (DE), keine Speicherung deiner Inhalte.
+                </p>
+              </div>
+
+              {/* Base URL (Override) */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Base-URL
+                </label>
+                <input
+                  type="text"
+                  value={localSettings.mittwaldBaseUrl}
+                  onChange={(e) =>
+                    updateSetting("mittwaldBaseUrl", e.target.value)
+                  }
+                  placeholder="https://llm.aihosting.mittwald.de/v1"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-sm"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  Standardwert nur ändern, wenn du einen eigenen Mittwald-Proxy
+                  betreibst.
+                </p>
+              </div>
+
+              {/* Mittwald LLM Model */}
+              {localSettings.aiProvider === "mittwald" && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Modell für Textanreicherung
+                  </label>
+                  <select
+                    value={localSettings.mittwaldModel}
+                    onChange={(e) =>
+                      updateSetting("mittwaldModel", e.target.value)
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="Mistral-Small-3.2-24B-Instruct">
+                      Mistral-Small 3.2 24B (Empfohlen)
+                    </option>
+                    <option value="Ministral-3-14B-Instruct-2512">
+                      Ministral 3 14B (mit Vision)
+                    </option>
+                    <option value="Devstral-Small-2-24B-Instruct-2512">
+                      Devstral-Small 2 24B (Code-optimiert)
+                    </option>
+                    <option value="gpt-oss-120b">
+                      GPT-OSS 120B (Komplexes Reasoning)
+                    </option>
+                  </select>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Exakte Bezeichnung notfalls aus deinem mStudio übernehmen.
+                  </p>
+                </div>
+              )}
+
+              {/* Mittwald STT Model */}
+              {localSettings.transcriptionProvider === "mittwald" && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Modell für Transkription
+                  </label>
+                  <select
+                    value={localSettings.mittwaldTranscriptionModel}
+                    onChange={(e) =>
+                      updateSetting(
+                        "mittwaldTranscriptionModel",
+                        e.target.value
+                      )
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="whisper-large-v3-turbo">
+                      Whisper-Large-V3-Turbo
+                    </option>
+                  </select>
+                </div>
+              )}
+            </section>
+          )}
 
           {/* OpenAI Settings (shown when OpenAI is selected) */}
           {(localSettings.aiProvider === "openai" ||

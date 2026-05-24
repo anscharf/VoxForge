@@ -10,6 +10,7 @@ const STORE_PATH: &str = "settings.json";
 pub enum AIProvider {
     Ollama,
     Openai,
+    Mittwald,
 }
 
 impl Default for AIProvider {
@@ -24,6 +25,7 @@ impl Default for AIProvider {
 pub enum TranscriptionProvider {
     Whisper,
     Openai,
+    Mittwald,
 }
 
 impl Default for TranscriptionProvider {
@@ -82,6 +84,22 @@ pub struct AppSettings {
     /// OpenAI model for transcription (e.g., whisper-1)
     #[serde(default = "default_openai_transcription_model")]
     pub openai_transcription_model: String,
+
+    /// Mittwald AI Hosting API Key
+    #[serde(default)]
+    pub mittwald_api_key: String,
+
+    /// Mittwald base URL (override; default: https://llm.aihosting.mittwald.de/v1)
+    #[serde(default = "default_mittwald_base_url")]
+    pub mittwald_base_url: String,
+
+    /// Mittwald LLM model for enrichment
+    #[serde(default = "default_mittwald_model")]
+    pub mittwald_model: String,
+
+    /// Mittwald STT model for transcription
+    #[serde(default = "default_mittwald_transcription_model")]
+    pub mittwald_transcription_model: String,
 }
 
 fn default_openai_model() -> String {
@@ -90,6 +108,18 @@ fn default_openai_model() -> String {
 
 fn default_openai_transcription_model() -> String {
     "whisper-1".to_string()
+}
+
+fn default_mittwald_base_url() -> String {
+    "https://llm.aihosting.mittwald.de/v1".to_string()
+}
+
+fn default_mittwald_model() -> String {
+    "Mistral-Small-3.2-24B-Instruct".to_string()
+}
+
+fn default_mittwald_transcription_model() -> String {
+    "whisper-large-v3-turbo".to_string()
 }
 
 impl Default for AppSettings {
@@ -109,6 +139,10 @@ impl Default for AppSettings {
             openai_api_key: String::new(),
             openai_model: default_openai_model(),
             openai_transcription_model: default_openai_transcription_model(),
+            mittwald_api_key: String::new(),
+            mittwald_base_url: default_mittwald_base_url(),
+            mittwald_model: default_mittwald_model(),
+            mittwald_transcription_model: default_mittwald_transcription_model(),
         }
     }
 }

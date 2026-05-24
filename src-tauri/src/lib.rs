@@ -110,6 +110,11 @@ pub fn run() {
             commands::openai::openai_transcribe,
             commands::openai::openai_enrich_text,
             commands::openai::openai_generate,
+            // Mittwald AI Hosting commands (DSGVO-konform, deutsches Rechenzentrum)
+            commands::mittwald::check_mittwald_api_key,
+            commands::mittwald::mittwald_transcribe,
+            commands::mittwald::mittwald_enrich_text,
+            commands::mittwald::mittwald_generate,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
