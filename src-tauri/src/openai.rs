@@ -3,8 +3,11 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::{AppHandle, Emitter};
 
-/// OpenAI API base URL
+/// OpenAI API base URL (Cloud)
 pub const OPENAI_API_URL: &str = "https://api.openai.com/v1";
+
+/// Mittwald AI Hosting base URL (DSGVO-konform, deutsches Rechenzentrum)
+pub const MITTWALD_API_URL: &str = "https://llm.aihosting.mittwald.de/v1";
 
 /// OpenAI chat message
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -73,23 +76,38 @@ pub struct TranscriptionResponse {
     pub text: String,
 }
 
-/// OpenAI client
+/// OpenAI-compatible client (OpenAI Cloud, Mittwald AI Hosting, etc.)
 pub struct OpenAIClient {
     client: Client,
     api_key: String,
+    base_url: String,
 }
 
 impl OpenAIClient {
-    pub fn new(api_key: String) -> Self {
+    /// Generischer Konstruktor — Base-URL frei wählbar.
+    /// Funktioniert für jeden OpenAI-API-kompatiblen Endpunkt
+    /// (OpenAI Cloud, Mittwald AI Hosting, Groq, Together.ai, vLLM-Selfhost, ...).
+    pub fn new(api_key: String, base_url: String) -> Self {
         Self {
             client: Client::new(),
             api_key,
+            base_url,
         }
+    }
+
+    /// Convenience-Konstruktor für OpenAI Cloud.
+    pub fn openai(api_key: String) -> Self {
+        Self::new(api_key, OPENAI_API_URL.to_string())
+    }
+
+    /// Convenience-Konstruktor für Mittwald AI Hosting.
+    pub fn mittwald(api_key: String) -> Self {
+        Self::new(api_key, MITTWALD_API_URL.to_string())
     }
 
     /// Check if the API key is valid by making a simple request
     pub async fn validate_api_key(&self) -> Result<bool, String> {
-        let url = format!("{}/models", OPENAI_API_URL);
+        let url = format!("{}/models", self.base_url);
 
         let response = self
             .client
@@ -109,7 +127,7 @@ impl OpenAIClient {
         model: &str,
         language: Option<&str>,
     ) -> Result<String, String> {
-        let url = format!("{}/audio/transcriptions", OPENAI_API_URL);
+        let url = format!("{}/audio/transcriptions", self.base_url);
 
         // Read the audio file
         let file_bytes = std::fs::read(&audio_path)
@@ -166,7 +184,7 @@ impl OpenAIClient {
         &self,
         request: &ChatCompletionRequest,
     ) -> Result<String, String> {
-        let url = format!("{}/chat/completions", OPENAI_API_URL);
+        let url = format!("{}/chat/completions", self.base_url);
 
         let mut non_streaming_request = request.clone();
         non_streaming_request.stream = false;
@@ -204,7 +222,7 @@ impl OpenAIClient {
         request: &ChatCompletionRequest,
         app: &AppHandle,
     ) -> Result<String, String> {
-        let url = format!("{}/chat/completions", OPENAI_API_URL);
+        let url = format!("{}/chat/completions", self.base_url);
 
         let mut streaming_request = request.clone();
         streaming_request.stream = true;
@@ -295,19 +313,33 @@ impl OpenAIClient {
     }
 }
 
-/// Check if OpenAI API key is valid
-pub async fn check_openai_setup(api_key: &str) -> Result<OpenAISetupStatus, String> {
+/// Check if an OpenAI-compatible API key is valid against the given base URL.
+/// Used for both OpenAI Cloud and Mittwald AI Hosting.
+pub async fn check_provider_setup(
+    api_key: &str,
+    base_url: &str,
+) -> Result<OpenAISetupStatus, String> {
     if api_key.is_empty() {
         return Ok(OpenAISetupStatus::NoApiKey);
     }
 
-    let client = OpenAIClient::new(api_key.to_string());
+    let client = OpenAIClient::new(api_key.to_string(), base_url.to_string());
 
     match client.validate_api_key().await {
         Ok(true) => Ok(OpenAISetupStatus::Ready),
         Ok(false) => Ok(OpenAISetupStatus::InvalidApiKey),
         Err(e) => Ok(OpenAISetupStatus::Error(e)),
     }
+}
+
+/// Backward-compatible wrapper: check against OpenAI Cloud.
+pub async fn check_openai_setup(api_key: &str) -> Result<OpenAISetupStatus, String> {
+    check_provider_setup(api_key, OPENAI_API_URL).await
+}
+
+/// Check against Mittwald AI Hosting.
+pub async fn check_mittwald_setup(api_key: &str) -> Result<OpenAISetupStatus, String> {
+    check_provider_setup(api_key, MITTWALD_API_URL).await
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

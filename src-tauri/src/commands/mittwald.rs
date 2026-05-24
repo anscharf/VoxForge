@@ -1,64 +1,77 @@
-use crate::openai::{check_openai_setup, ChatCompletionRequest, ChatMessage, OpenAIClient, OpenAISetupStatus, OPENAI_API_URL};
 use crate::ollama::EnrichmentMode;
+use crate::openai::{
+    check_mittwald_setup, ChatCompletionRequest, ChatMessage, OpenAIClient, OpenAISetupStatus,
+    MITTWALD_API_URL,
+};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::AppHandle;
 
-/// Request for OpenAI transcription
+/// Request for Mittwald transcription
 #[derive(Debug, Deserialize)]
-pub struct OpenAITranscribeRequest {
+pub struct MittwaldTranscribeRequest {
     pub audio_path: String,
     pub api_key: String,
     #[serde(default = "default_transcription_model")]
     pub model: String,
     pub language: Option<String>,
+    #[serde(default)]
+    pub base_url: Option<String>,
 }
 
 fn default_transcription_model() -> String {
-    "whisper-1".to_string()
+    "whisper-large-v3-turbo".to_string()
 }
 
-/// Request for OpenAI enrichment
+/// Request for Mittwald enrichment
 #[derive(Debug, Deserialize)]
-pub struct OpenAIEnrichRequest {
+pub struct MittwaldEnrichRequest {
     pub text: String,
     pub api_key: String,
     pub mode: EnrichmentMode,
     #[serde(default = "default_chat_model")]
     pub model: String,
     pub custom_prompt: Option<String>,
+    #[serde(default)]
+    pub base_url: Option<String>,
 }
 
 fn default_chat_model() -> String {
-    "gpt-4o-mini".to_string()
+    "Mistral-Small-3.2-24B-Instruct".to_string()
 }
 
 /// Response from enrichment
 #[derive(Debug, Serialize)]
-pub struct OpenAIEnrichResponse {
+pub struct MittwaldEnrichResponse {
     pub enriched_text: String,
     pub mode: EnrichmentMode,
 }
 
-/// Check OpenAI API key validity
-#[tauri::command]
-pub async fn check_openai_api_key(api_key: String) -> Result<OpenAISetupStatus, String> {
-    check_openai_setup(&api_key).await
+fn resolve_base_url(custom: Option<String>) -> String {
+    custom
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| MITTWALD_API_URL.to_string())
 }
 
-/// Transcribe audio using OpenAI Whisper API
+/// Check Mittwald API key validity
 #[tauri::command]
-pub async fn openai_transcribe(
-    request: OpenAITranscribeRequest,
+pub async fn check_mittwald_api_key(api_key: String) -> Result<OpenAISetupStatus, String> {
+    check_mittwald_setup(&api_key).await
+}
+
+/// Transcribe audio using Mittwald-hosted Whisper (whisper-large-v3-turbo)
+#[tauri::command]
+pub async fn mittwald_transcribe(
+    request: MittwaldTranscribeRequest,
 ) -> Result<String, String> {
     let audio_path = PathBuf::from(&request.audio_path);
 
-    // Validate the path
     if !audio_path.exists() {
         return Err(format!("Audio file not found: {}", request.audio_path));
     }
 
-    let client = OpenAIClient::new(request.api_key, OPENAI_API_URL.to_string());
+    let base_url = resolve_base_url(request.base_url);
+    let client = OpenAIClient::new(request.api_key, base_url);
 
     client
         .transcribe(
@@ -69,51 +82,53 @@ pub async fn openai_transcribe(
         .await
 }
 
-/// Enrich text using OpenAI with streaming
+/// Enrich text using Mittwald-hosted LLM with streaming.
+/// Emits the same `ollama-stream` / `ollama-done` events as the other providers,
+/// so the frontend stays unchanged.
 #[tauri::command]
-pub async fn openai_enrich_text(
+pub async fn mittwald_enrich_text(
     app: AppHandle,
-    request: OpenAIEnrichRequest,
-) -> Result<OpenAIEnrichResponse, String> {
-    // Validate input
+    request: MittwaldEnrichRequest,
+) -> Result<MittwaldEnrichResponse, String> {
     if request.text.trim().is_empty() {
         return Err("Text to enrich cannot be empty".to_string());
     }
 
-    // Validate custom prompt for custom mode
     if request.mode == EnrichmentMode::Custom && request.custom_prompt.is_none() {
         return Err("Custom prompt is required for custom enrichment mode".to_string());
     }
 
-    // Get system prompt based on mode
     let system_prompt = match request.mode {
         EnrichmentMode::Custom => request.custom_prompt.unwrap_or_default(),
         _ => request.mode.system_prompt().unwrap_or("").to_string(),
     };
 
-    let client = OpenAIClient::new(request.api_key, OPENAI_API_URL.to_string());
+    let base_url = resolve_base_url(request.base_url);
+    let client = OpenAIClient::new(request.api_key, base_url);
 
     let enriched_text = client
         .enrich_text(&request.text, &system_prompt, &request.model, &app)
         .await?;
 
-    Ok(OpenAIEnrichResponse {
+    Ok(MittwaldEnrichResponse {
         enriched_text,
         mode: request.mode,
     })
 }
 
-/// Generate chat completion with OpenAI
+/// Raw chat completion against Mittwald.
 #[tauri::command]
-pub async fn openai_generate(
+pub async fn mittwald_generate(
     app: AppHandle,
     api_key: String,
     prompt: String,
     model: String,
     system: Option<String>,
+    base_url: Option<String>,
     stream: Option<bool>,
 ) -> Result<String, String> {
-    let client = OpenAIClient::new(api_key, OPENAI_API_URL.to_string());
+    let base_url = resolve_base_url(base_url);
+    let client = OpenAIClient::new(api_key, base_url);
 
     let mut messages = Vec::new();
 

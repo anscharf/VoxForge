@@ -53,10 +53,10 @@ export interface EnrichResponse {
 }
 
 // AI Provider type
-export type AIProvider = "ollama" | "openai";
+export type AIProvider = "ollama" | "openai" | "mittwald";
 
 // Transcription provider type
-export type TranscriptionProvider = "whisper" | "openai";
+export type TranscriptionProvider = "whisper" | "openai" | "mittwald";
 
 // App settings
 export interface AppSettings {
@@ -75,6 +75,11 @@ export interface AppSettings {
   openaiApiKey: string;
   openaiModel: string;
   openaiTranscriptionModel: string;
+  // Mittwald AI Hosting settings (DSGVO-konform)
+  mittwaldApiKey: string;
+  mittwaldBaseUrl: string;
+  mittwaldModel: string;
+  mittwaldTranscriptionModel: string;
 }
 
 // Recording state

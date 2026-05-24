@@ -87,8 +87,20 @@ export function useTranscription() {
 
         let transcriptionText: string;
 
-        // Check if we should use OpenAI for transcription
-        if (settings?.transcriptionProvider === "openai" && settings?.openaiApiKey) {
+        // Check provider order: Mittwald (DSGVO) > OpenAI > local Whisper
+        if (settings?.transcriptionProvider === "mittwald" && settings?.mittwaldApiKey) {
+          console.log("[useTranscription] Using Mittwald AI Hosting for transcription");
+          toast.loading("Verwende Mittwald Whisper...", { id: "transcribe" });
+          transcriptionText = await invoke<string>("mittwald_transcribe", {
+            request: {
+              audio_path: audioPath,
+              api_key: settings.mittwaldApiKey,
+              model: settings.mittwaldTranscriptionModel || "whisper-large-v3-turbo",
+              language: settings.language !== "auto" ? settings.language : null,
+              base_url: settings.mittwaldBaseUrl || null,
+            },
+          });
+        } else if (settings?.transcriptionProvider === "openai" && settings?.openaiApiKey) {
           // Use OpenAI Whisper API
           console.log("[useTranscription] Using OpenAI for transcription");
           toast.loading("Verwende OpenAI Whisper...", { id: "transcribe" });
@@ -158,8 +170,23 @@ export function useEnrichment() {
         setRecordingState("enriching");
         setEnrichedText(""); // Clear previous
 
-        // Check if we should use OpenAI for enrichment
-        if (settings?.aiProvider === "openai" && settings?.openaiApiKey) {
+        // Check provider order: Mittwald (DSGVO) > OpenAI > Ollama
+        if (settings?.aiProvider === "mittwald" && settings?.mittwaldApiKey) {
+          // Use Mittwald - streaming populates text via ollama-stream events
+          await invoke<{ enriched_text: string; mode: string }>(
+            "mittwald_enrich_text",
+            {
+              request: {
+                text,
+                api_key: settings.mittwaldApiKey,
+                mode: enrichmentMode,
+                model: settings.mittwaldModel || "Mistral-Small-3.2-24B-Instruct",
+                custom_prompt: enrichmentMode === "custom" ? customPrompt : undefined,
+                base_url: settings.mittwaldBaseUrl || undefined,
+              },
+            }
+          );
+        } else if (settings?.aiProvider === "openai" && settings?.openaiApiKey) {
           // Use OpenAI - streaming populates text via events
           await invoke<{ enriched_text: string; mode: string }>(
             "openai_enrich_text",
